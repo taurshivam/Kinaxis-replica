@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kinaxis RapidResponse – Small Scale Industries</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #080C14; font-family: 'Syne', sans-serif; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #080C14; }
+    ::-webkit-scrollbar-thumb { background: #1A2740; border-radius: 3px; }
+    input::placeholder { color: #3A4D6A; }
+    select option { background: #0F1825; color: #C8D8E8; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .fade-in { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+    .row-hover:hover { background: #0F1825 !important; transition: background 0.15s; }
+    .pill-btn:hover { background: #1A2740 !important; color: #7EB8F7 !important; transition: all 0.15s; }
+    .tab-btn { transition: all 0.2s; }
+    .scenario-card { transition: all 0.2s; }
+    .scenario-card:hover { transform: translateY(-2px); box-shadow: 0 6px 24px #0005; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+
+const { useState, useRef, useEffect } = React;
+
+/* ─────────────── DATA ─────────────── */
+const industries = [
+  { id:"textile",  label:"Textile Mill",       icon:"🧵", color:"#F472B6" },
+  { id:"bakery",   label:"Bakery Unit",         icon:"🍞", color:"#FB923C" },
+  { id:"furniture",label:"Furniture Workshop",  icon:"🪑", color:"#A78BFA" },
+  { id:"pharma",   label:"Pharma Micro Unit",   icon:"💊", color:"#34D399" },
+  { id:"auto",     label:"Auto Parts Maker",    icon:"⚙️", color:"#60A5FA" },
+];
+
+const scenarioTemplates = {
+  textile: [
+    { name:"Festival Season Surge",  tag:"Demand+30%",   impact:"+₹4.2L",  risk:"Medium", horizon:"6 weeks",  description:"Demand spikes for ethnic wear during Diwali/Eid. Raw cotton & dye supply needs pre-booking." },
+    { name:"Power Cut Impact",       tag:"Capacity-20%", impact:"-₹1.8L",  risk:"High",   horizon:"2 weeks",  description:"Scheduled load-shedding reduces loom hours. Assess overtime & generator cost." },
+    { name:"Yarn Price Hike +15%",   tag:"CostUp",       impact:"-₹2.1L",  risk:"High",   horizon:"4 weeks",  description:"Supplier quote increase. Switch to alternate source or pass cost to buyer?" },
+    { name:"New Export Order",       tag:"Volume+50%",   impact:"+₹9.0L",  risk:"Low",    horizon:"12 weeks", description:"UAE bulk order. Evaluate if current capacity + 1 shift can fulfill without new machinery." },
+  ],
+  bakery: [
+    { name:"Wheat Price Spike",      tag:"CostUp+22%",   impact:"-₹0.9L",  risk:"High",   horizon:"3 weeks",  description:"Commodity market rise. Pre-purchase flour stock vs. reduce SKUs?" },
+    { name:"School Reopen Demand",   tag:"Demand+40%",   impact:"+₹1.6L",  risk:"Low",    horizon:"4 weeks",  description:"Back-to-school drives packed snack demand. Plan batch sizes and shelf life." },
+    { name:"New Retail Channel",     tag:"Channel+1",    impact:"+₹2.2L",  risk:"Medium", horizon:"8 weeks",  description:"Supermarket listing opportunity. Assesses packaging, MOQ, and credit terms." },
+    { name:"Oven Downtime",          tag:"Capacity-35%", impact:"-₹1.2L",  risk:"High",   horizon:"1 week",   description:"Primary oven maintenance. Route orders to backup oven; adjust daily output plan." },
+  ],
+  furniture: [
+    { name:"Plywood Shortage",       tag:"SupplyGap",    impact:"-₹3.1L",  risk:"High",   horizon:"5 weeks",  description:"Tier-1 supplier delayed. Source alternate plywood grade or substitute MDF?" },
+    { name:"Housing Project Order",  tag:"Bulk+200 units",impact:"+₹11.0L",risk:"Low",    horizon:"16 weeks", description:"Builder placed large modular furniture order. Evaluate subcontracting for metal works." },
+    { name:"Labor Strike Risk",      tag:"Capacity-50%", impact:"-₹4.5L",  risk:"High",   horizon:"2 weeks",  description:"Union negotiation in progress. Model output reduction and customer delay impact." },
+    { name:"Monsoon Delay (Timber)", tag:"Lead+3wk",     impact:"-₹1.7L",  risk:"Medium", horizon:"3 weeks",  description:"Timber transport disrupted. Prioritize high-margin SKUs with existing stock." },
+  ],
+  pharma: [
+    { name:"API Price Increase",     tag:"CostUp+18%",   impact:"-₹2.4L",  risk:"High",   horizon:"4 weeks",  description:"Active Pharmaceutical Ingredient cost rise from Chinese supplier. Explore Indian API source." },
+    { name:"Govt Tender Win",        tag:"Volume+300%",  impact:"+₹18.0L", risk:"Medium", horizon:"20 weeks", description:"State health dept tender. Evaluate GMP compliance, batch scale-up, and cold chain." },
+    { name:"Shelf Life Expiry Risk", tag:"Waste Risk",   impact:"-₹0.8L",  risk:"Medium", horizon:"6 weeks",  description:"Near-expiry stock of 3 SKUs. Push via distributor discount or return to supplier?" },
+    { name:"New OTC Product Launch", tag:"New SKU",      impact:"+₹3.2L",  risk:"Low",    horizon:"10 weeks", description:"Vitamin C effervescent launch. Assess packaging procurement and retailer shelf slot." },
+  ],
+  auto: [
+    { name:"Steel Rod Supply Gap",   tag:"SupplyGap-40%",impact:"-₹5.2L",  risk:"High",   horizon:"3 weeks",  description:"Primary steel supplier under force majeure. Spot buy vs. production halt?" },
+    { name:"OEM Rush Order +25%",    tag:"Demand+25%",   impact:"+₹7.8L",  risk:"Low",    horizon:"6 weeks",  description:"Auto OEM accelerated production. Can current shifts + overtime meet delivery SLA?" },
+    { name:"GST Rate Change",        tag:"Tax Impact",   impact:"-₹1.1L",  risk:"Medium", horizon:"8 weeks",  description:"Proposed GST revision on auto components. Model margin impact across SKU portfolio." },
+    { name:"Machinery Upgrade",      tag:"CAPEX",        impact:"+₹12.0L", risk:"Low",    horizon:"24 weeks", description:"CNC upgrade reduces scrap by 8%. Model payback period under current demand forecast." },
+  ],
+};
+
+const loadDemandTemplates = {
+  textile: [
+    { sku:"FABRIC-CTN-001", description:"Cotton Plain 40s",  unit:"Metres", week1:2400, week2:2800, week3:3200, week4:4100, week5:3800, week6:2600, source:"Sales Order", confidence:"High"   },
+    { sku:"FABRIC-POL-002", description:"Polyester Blend",   unit:"Metres", week1:1800, week2:1900, week3:2100, week4:2000, week5:2200, week6:2100, source:"Forecast",    confidence:"Medium" },
+    { sku:"THREAD-WT-003",  description:"White Thread 2-ply",unit:"Kgs",    week1:120,  week2:130,  week3:150,  week4:200,  week5:180,  week6:140,  source:"MRP Derived", confidence:"High"   },
+    { sku:"DYE-RED-004",    description:"Reactive Red Dye",  unit:"Kgs",    week1:45,   week2:48,   week3:60,   week4:80,   week5:72,   week6:50,   source:"Forecast",    confidence:"Low"    },
+    { sku:"FABRIC-SLK-005", description:"Silk Blend 20s",    unit:"Metres", week1:600,  week2:650,  week3:900,  week4:1400, week5:1200, week6:700,  source:"Sales Order", confidence:"High"   },
+  ],
+  bakery: [
+    { sku:"FLOUR-WHT-001", description:"Refined Wheat Flour",unit:"Kgs",  week1:1200, week2:1250, week3:1300, week4:1500, week5:1400, week6:1250, source:"Production",  confidence:"High"   },
+    { sku:"SUGAR-WH-002",  description:"White Sugar",        unit:"Kgs",  week1:480,  week2:500,  week3:520,  week4:620,  week5:580,  week6:500,  source:"Production",  confidence:"High"   },
+    { sku:"SKU-BREAD-003", description:"Whole Wheat Bread",  unit:"Units",week1:3600, week2:3800, week3:4200, week4:5000, week5:4600, week6:3900, source:"Sales Order", confidence:"High"   },
+    { sku:"SKU-CAKE-004",  description:"Celebration Cake",   unit:"Units",week1:140,  week2:160,  week3:200,  week4:380,  week5:310,  week6:180,  source:"Forecast",    confidence:"Medium" },
+    { sku:"PACK-PLY-005",  description:"Packaging Ply Sheets",unit:"Pcs", week1:8000, week2:8400, week3:9200, week4:11000,week5:10200,week6:8600, source:"MRP Derived", confidence:"Medium" },
+  ],
+  furniture: [
+    { sku:"PLY-18MM-001",  description:"18mm Plywood Sheet", unit:"Sheets",week1:180, week2:200, week3:220, week4:260, week5:240, week6:200, source:"Production",  confidence:"High"   },
+    { sku:"PLY-12MM-002",  description:"12mm Plywood Sheet", unit:"Sheets",week1:120, week2:130, week3:150, week4:180, week5:160, week6:130, source:"Production",  confidence:"High"   },
+    { sku:"FNSH-WARD-003", description:"3-Door Wardrobe",    unit:"Units", week1:28,  week2:32,  week3:36,  week4:45,  week5:40,  week6:30,  source:"Sales Order", confidence:"High"   },
+    { sku:"FNSH-SOFA-004", description:"3-Seater Sofa",      unit:"Units", week1:18,  week2:20,  week3:24,  week4:30,  week5:26,  week6:20,  source:"Forecast",    confidence:"Medium" },
+    { sku:"HW-SCRW-005",   description:"Wood Screws Asst.",  unit:"Box",   week1:220, week2:240, week3:260, week4:320, week5:290, week6:240, source:"MRP Derived", confidence:"Medium" },
+  ],
+  pharma: [
+    { sku:"API-PARAC-001", description:"Paracetamol API",    unit:"Kgs",  week1:80,   week2:85,   week3:90,   week4:100,  week5:95,   week6:85,   source:"Production",  confidence:"High"   },
+    { sku:"TAB-PCT-002",   description:"Paracetamol 500mg",  unit:"Strip",week1:42000,week2:44000,week3:48000,week4:55000,week5:50000,week6:44000,source:"Sales Order", confidence:"High"   },
+    { sku:"CAP-AMX-003",   description:"Amoxicillin 250mg",  unit:"Strip",week1:18000,week2:19000,week3:21000,week4:24000,week5:22000,week6:19000,source:"Forecast",    confidence:"Medium" },
+    { sku:"SYP-VITC-004",  description:"Vitamin C Syrup",    unit:"Bottle",week1:3200, week2:3400, week3:3800, week4:4500, week5:4100, week6:3500, source:"Forecast",    confidence:"Low"    },
+    { sku:"PACK-ALU-005",  description:"Alu-Alu Foil Roll",  unit:"Roll", week1:620,  week2:650,  week3:700,  week4:820,  week5:760,  week6:660,  source:"MRP Derived", confidence:"High"   },
+  ],
+  auto: [
+    { sku:"STL-ROD-001",   description:"Steel Rod 16mm",     unit:"Kgs",  week1:2200, week2:2400, week3:2600, week4:2800, week5:2600, week6:2400, source:"Production",  confidence:"High"   },
+    { sku:"BRKT-MTL-002",  description:"Mounting Bracket A", unit:"Pcs",  week1:1400, week2:1500, week3:1650, week4:1800, week5:1700, week6:1550, source:"Sales Order", confidence:"High"   },
+    { sku:"BUSH-RBR-003",  description:"Rubber Bush 40mm",   unit:"Pcs",  week1:3200, week2:3400, week3:3600, week4:3900, week5:3700, week6:3400, source:"Forecast",    confidence:"Medium" },
+    { sku:"BOLT-HX-004",   description:"Hex Bolt M12×60",    unit:"Pcs",  week1:8800, week2:9200, week3:9600, week4:10400,week5:9800, week6:9200, source:"MRP Derived", confidence:"High"   },
+    { sku:"BEAR-6205-005", description:"Ball Bearing 6205",  unit:"Pcs",  week1:420,  week2:450,  week3:480,  week4:520,  week5:500,  week6:460,  source:"Sales Order", confidence:"Medium" },
+  ],
+};
+
+const confidenceColor = { High:"#34D399", Medium:"#FBBF24", Low:"#F87171" };
+const riskColor       = { High:"#F87171", Medium:"#FBBF24", Low:"#34D399" };
+const impactIsPos     = v => v.startsWith("+");
+
+/* ─────────────── MINI BAR ─────────────── */
+function MiniBar({ values, color }) {
+  const max = Math.max(...values);
+  return (
+    <div style={{ display:"flex", alignItems:"flex-end", gap:"2px", height:"28px" }}>
+      {values.map((v,i) => (
+        <div key={i} style={{ flex:1, height:`${Math.round((v/max)*100)}%`, minHeight:"3px", background:color, borderRadius:"1px", opacity: i===3 ? 1 : 0.55 + i*0.08 }} />
+      ))}
+    </div>
+  );
+}
+
+/* ─────────────── LOAD DEMAND TABLE ─────────────── */
+function LoadDemandTable({ industryId }) {
+  const rows = loadDemandTemplates[industryId] || [];
+  const weeks = ["W1","W2","W3","W4","W5","W6"];
+  const weekKeys = ["week1","week2","week3","week4","week5","week6"];
+  const [editMode, setEditMode] = useState(false);
+  const [data, setData] = useState(rows);
+  const [newRow, setNewRow] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState("");
+
+  const totalByWeek = weekKeys.map(wk => data.reduce((s,r) => s + (r[wk]||0), 0));
+
+  const handleCellEdit = (ri, wk, val) => {
+    const parsed = parseInt(val.replace(/,/g,"")) || 0;
+    setData(d => d.map((row,i) => i===ri ? {...row, [wk]: parsed} : row));
+  };
+
+  const addRow = () => setNewRow({ sku:"", description:"", unit:"Units", week1:0, week2:0, week3:0, week4:0, week5:0, week6:0, source:"Manual", confidence:"Medium" });
+
+  const saveNewRow = () => {
+    if (!newRow.sku || !newRow.description) return;
+    setData(d => [...d, newRow]);
+    setNewRow(null);
+  };
+
+  const handleImport = () => {
+    setImportError("");
+    try {
+      const lines = importText.trim().split("\n").filter(Boolean);
+      const header = lines[0].split(/[\t,]/).map(h => h.trim().toLowerCase());
+      const skuI = header.indexOf("sku"); const descI = header.indexOf("description");
+      const unitI = header.indexOf("unit"); const srcI = header.indexOf("source"); const confI = header.indexOf("confidence");
+      const wIdxs = ["w1","w2","w3","w4","w5","w6"].map(w => header.indexOf(w));
+      if (skuI<0 || descI<0) throw new Error("Missing 'SKU' or 'Description' column");
+      const imported = lines.slice(1).map(line => {
+        const cols = line.split(/[\t,]/);
+        const obj = {
+          sku: cols[skuI]?.trim() || "",
+          description: cols[descI]?.trim() || "",
+          unit: unitI>=0 ? cols[unitI]?.trim() : "Units",
+          source: srcI>=0 ? cols[srcI]?.trim() : "Import",
+          confidence: confI>=0 ? cols[confI]?.trim() : "Medium",
+        };
+        wIdxs.forEach((wi,n) => { obj[`week${n+1}`] = wi>=0 ? parseInt(cols[wi]) || 0 : 0; });
+        return obj;
+      });
+      setData(d => [...d, ...imported]);
+      setImportOpen(false);
+      setImportText("");
+    } catch(e) { setImportError(e.message); }
+  };
+
+  return (
+    <div className="fade-in">
+      {/* Header Bar */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"14px", flexWrap:"wrap", gap:"10px" }}>
+        <div>
+          <h3 style={{ margin:0, fontSize:"16px", fontWeight:"800", color:"#E8F0FA" }}>Load Demand Format</h3>
+          <p style={{ margin:"3px 0 0", fontSize:"11px", color:"#4A6080" }}>6-week rolling demand plan · {data.length} SKUs loaded</p>
+        </div>
+        <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
+          <button onClick={() => setImportOpen(i => !i)}
+            style={{ background:"#0F1825", border:"1px solid #1A2740", color:"#7EB8F7", padding:"7px 14px", borderRadius:"6px", fontSize:"12px", cursor:"pointer", fontWeight:"700" }}>
+            ⬆ Import CSV/TSV
+          </button>
+          <button onClick={() => setEditMode(e => !e)}
+            style={{ background: editMode?"#1D4ED8":"#0F1825", border:`1px solid ${editMode?"#3B82F6":"#1A2740"}`, color: editMode?"#fff":"#7EB8F7", padding:"7px 14px", borderRadius:"6px", fontSize:"12px", cursor:"pointer", fontWeight:"700" }}>
+            {editMode ? "✓ Done Editing" : "✏ Edit Demand"}
+          </button>
+          {editMode && (
+            <button onClick={addRow}
+              style={{ background:"#065F46", border:"1px solid #10B981", color:"#6EE7B7", padding:"7px 14px", borderRadius:"6px", fontSize:"12px", cursor:"pointer", fontWeight:"700" }}>
+              + Add SKU Row
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Import Panel */}
+      {importOpen && (
+        <div className="fade-in" style={{ background:"#0B1220", border:"1px solid #1A2740", borderRadius:"10px", padding:"16px", marginBottom:"14px" }}>
+          <div style={{ fontSize:"12px", fontWeight:"700", color:"#7EB8F7", marginBottom:"8px" }}>Paste CSV / TSV — Expected columns:</div>
+          <div className="mono" style={{ fontSize:"10px", color:"#4A6080", marginBottom:"10px", background:"#060B14", padding:"8px 12px", borderRadius:"6px" }}>
+            SKU, Description, Unit, W1, W2, W3, W4, W5, W6, Source, Confidence
+          </div>
+          <textarea value={importText} onChange={e => setImportText(e.target.value)}
+            placeholder={"FABRIC-NEW-001, Cotton Twill, Metres, 800, 900, 1000, 1200, 1100, 950, Sales Order, High\n..."}
+            style={{ width:"100%", height:"90px", background:"#060B14", border:"1px solid #1A2740", color:"#C8D8E8", padding:"10px", borderRadius:"6px", fontSize:"11px", fontFamily:"JetBrains Mono,monospace", resize:"vertical", outline:"none" }} />
+          {importError && <div style={{ color:"#F87171", fontSize:"11px", marginTop:"6px" }}>{importError}</div>}
+          <div style={{ display:"flex", gap:"8px", marginTop:"10px" }}>
+            <button onClick={handleImport} style={{ background:"#1D4ED8", border:"none", color:"#fff", padding:"7px 18px", borderRadius:"6px", fontSize:"12px", cursor:"pointer", fontWeight:"700" }}>Import Rows</button>
+            <button onClick={() => { setImportOpen(false); setImportError(""); }} style={{ background:"#0F1825", border:"1px solid #1A2740", color:"#94A3B8", padding:"7px 14px", borderRadius:"6px", fontSize:"12px", cursor:"pointer" }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
+      <div style={{ background:"#0B1220", border:"1px solid #1A2740", borderRadius:"10px", overflowX:"auto" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"12px", minWidth:"860px" }}>
+          <thead>
+            <tr style={{ background:"#060B14" }}>
+              {["SKU","Description","Unit",...weeks,"Source","Conf.","Trend"].map((h,i) => (
+                <th key={i} style={{ padding:"10px 12px", textAlign: i>=3&&i<=8?"right":"left", color:"#4A6080", fontWeight:"700", fontSize:"10px", textTransform:"uppercase", letterSpacing:"0.5px", borderBottom:"1px solid #1A2740", whiteSpace:"nowrap" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((row,ri) => {
+              const vals = weekKeys.map(wk => row[wk]);
+              const peak = Math.max(...vals);
+              const peakIdx = vals.indexOf(peak);
+              return (
+                <tr key={ri} className="row-hover" style={{ borderBottom:"1px solid #0F1825" }}>
+                  <td style={{ padding:"10px 12px" }} className="mono"><span style={{ color:"#60A5FA", fontWeight:"700", fontSize:"11px" }}>{row.sku}</span></td>
+                  <td style={{ padding:"10px 12px", color:"#C8D8E8" }}>{row.description}</td>
+                  <td style={{ padding:"10px 12px", color:"#4A6080", fontSize:"11px" }}>{row.unit}</td>
+                  {weekKeys.map((wk,wi) => (
+                    <td key={wk} style={{ padding:"6px 12px", textAlign:"right" }}>
+                      {editMode
+                        ? <input type="text" defaultValue={row[wk].toLocaleString()}
+                            onBlur={e => handleCellEdit(ri, wk, e.target.value)}
+                            style={{ width:"70px", background:"#1A2740", border:"1px solid #2A3F60", color:"#E8F0FA", padding:"4px 6px", borderRadius:"4px", fontSize:"11px", textAlign:"right", outline:"none", fontFamily:"JetBrains Mono,monospace" }} />
+                        : <span style={{ color: wi===peakIdx?"#FBBF24":"#94A3B8", fontWeight: wi===peakIdx?"800":"400", fontSize:"12px", fontFamily:"JetBrains Mono,monospace" }}>
+                            {row[wk].toLocaleString()}
+                          </span>
+                      }
+                    </td>
+                  ))}
+                  <td style={{ padding:"10px 12px" }}>
+                    <span style={{ fontSize:"10px", padding:"2px 7px", borderRadius:"4px", background:"#1A2740", color:"#7EB8F7", fontWeight:"600" }}>{row.source}</span>
+                  </td>
+                  <td style={{ padding:"10px 12px" }}>
+                    <span style={{ fontSize:"10px", padding:"2px 7px", borderRadius:"4px", background:`${confidenceColor[row.confidence]}18`, color:confidenceColor[row.confidence], fontWeight:"700" }}>{row.confidence}</span>
+                  </td>
+                  <td style={{ padding:"8px 12px", minWidth:"80px" }}>
+                    <MiniBar values={vals} color="#3B82F6" />
+                  </td>
+                </tr>
+              );
+            })}
+
+            {/* New row input */}
+            {newRow && (
+              <tr style={{ background:"#0F1825", borderBottom:"1px solid #1A2740" }}>
+                <td style={{ padding:"8px 12px" }}>
+                  <input value={newRow.sku} onChange={e => setNewRow(r => ({...r, sku:e.target.value}))}
+                    placeholder="SKU-001" style={{ width:"90px", background:"#1A2740", border:"1px solid #2A3F60", color:"#E8F0FA", padding:"5px 8px", borderRadius:"4px", fontSize:"11px", fontFamily:"JetBrains Mono,monospace", outline:"none" }} />
+                </td>
+                <td style={{ padding:"8px 12px" }}>
+                  <input value={newRow.description} onChange={e => setNewRow(r => ({...r, description:e.target.value}))}
+                    placeholder="Description" style={{ width:"140px", background:"#1A2740", border:"1px solid #2A3F60", color:"#E8F0FA", padding:"5px 8px", borderRadius:"4px", fontSize:"11px", outline:"none" }} />
+                </td>
+                <td style={{ padding:"8px 12px" }}>
+                  <input value={newRow.unit} onChange={e => setNewRow(r => ({...r, unit:e.target.value}))}
+                    placeholder="Unit" style={{ width:"60px", background:"#1A2740", border:"1px solid #2A3F60", color:"#E8F0FA", padding:"5px 8px", borderRadius:"4px", fontSize:"11px", outline:"none" }} />
+                </td>
+                {weekKeys.map(wk => (
+                  <td key={wk} style={{ padding:"8px 12px" }}>
+                    <input type="number" value={newRow[wk]} onChange={e => setNewRow(r => ({...r, [wk]:parseInt(e.target.value)||0}))}
+                      style={{ width:"70px", background:"#1A2740", border:"1px solid #2A3F60", color:"#E8F0FA", padding:"5px 6px", borderRadius:"4px", fontSize:"11px", textAlign:"right", fontFamily:"JetBrains Mono,monospace", outline:"none" }} />
+                  </td>
+                ))}
+                <td style={{ padding:"8px 12px" }}>
+                  <select value={newRow.source} onChange={e => setNewRow(r => ({...r, source:e.target.value}))}
+                    style={{ background:"#1A2740", border:"1px solid #2A3F60", color:"#94A3B8", padding:"5px 7px", borderRadius:"4px", fontSize:"11px" }}>
+                    <option>Sales Order</option><option>Forecast</option><option>MRP Derived</option><option>Manual</option>
+                  </select>
+                </td>
+                <td style={{ padding:"8px 12px" }}>
+                  <select value={newRow.confidence} onChange={e => setNewRow(r => ({...r, confidence:e.target.value}))}
+                    style={{ background:"#1A2740", border:"1px solid #2A3F60", color:"#94A3B8", padding:"5px 7px", borderRadius:"4px", fontSize:"11px" }}>
+                    <option>High</option><option>Medium</option><option>Low</option>
+                  </select>
+                </td>
+                <td style={{ padding:"8px 12px" }}>
+                  <button onClick={saveNewRow} style={{ background:"#065F46", border:"1px solid #10B981", color:"#6EE7B7", padding:"5px 10px", borderRadius:"4px", fontSize:"11px", cursor:"pointer", fontWeight:"700", marginRight:"4px" }}>✓</button>
+                  <button onClick={() => setNewRow(null)} style={{ background:"#0F1825", border:"1px solid #1A2740", color:"#94A3B8", padding:"5px 8px", borderRadius:"4px", fontSize:"11px", cursor:"pointer" }}>✕</button>
+                </td>
+              </tr>
+            )}
+
+            {/* Totals row */}
+            <tr style={{ background:"#060B14", borderTop:"2px solid #1A2740" }}>
+              <td colSpan={3} style={{ padding:"10px 12px", color:"#4A6080", fontWeight:"700", fontSize:"10px", textTransform:"uppercase" }}>TOTAL DEMAND</td>
+              {totalByWeek.map((t,i) => (
+                <td key={i} style={{ padding:"10px 12px", textAlign:"right", color:"#7EB8F7", fontWeight:"800", fontFamily:"JetBrains Mono,monospace", fontSize:"12px" }}>{t.toLocaleString()}</td>
+              ))}
+              <td colSpan={3} />
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div style={{ marginTop:"10px", fontSize:"10px", color:"#3A4D6A", display:"flex", gap:"20px" }}>
+        <span>🟡 Highlighted cell = peak week demand</span>
+        <span>📊 Mini bars show weekly demand trend per SKU</span>
+        <span>✏ Click "Edit Demand" to modify values inline</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────── SCENARIO PLANNING ─────────────── */
+function ScenarioPlanning({ industryId }) {
+  const [selected, setSelected] = useState(null);
+  const scenarios = scenarioTemplates[industryId] || [];
+
+  return (
+    <div className="fade-in">
+      <div style={{ marginBottom:"14px" }}>
+        <h3 style={{ margin:0, fontSize:"16px", fontWeight:"800", color:"#E8F0FA" }}>What-If Scenario Planning</h3>
+        <p style={{ margin:"3px 0 0", fontSize:"11px", color:"#4A6080" }}>Select a scenario to analyse impact on your supply plan</p>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:"12px", marginBottom:"20px" }}>
+        {scenarios.map((s,i) => (
+          <div key={i} className="scenario-card" onClick={() => setSelected(selected===i?null:i)}
+            style={{ background:"#0B1220", border:`2px solid ${selected===i?"#3B82F6":"#1A2740"}`, borderRadius:"12px", padding:"18px", cursor:"pointer", position:"relative", overflow:"hidden" }}>
+            {selected===i && <div style={{ position:"absolute", top:0, left:0, right:0, height:"3px", background:"linear-gradient(90deg,#3B82F6,#8B5CF6)" }} />}
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:"10px" }}>
+              <div style={{ flex:1, marginRight:"10px" }}>
+                <div style={{ fontSize:"13px", fontWeight:"800", color:"#E8F0FA", lineHeight:"1.3" }}>{s.name}</div>
+                <div style={{ fontSize:"10px", color:"#4A6080", marginTop:"3px" }}>Horizon: {s.horizon}</div>
+              </div>
+              <span style={{ fontSize:"10px", padding:"3px 8px", borderRadius:"5px", fontWeight:"700", background:`${riskColor[s.risk]}18`, color:riskColor[s.risk], whiteSpace:"nowrap" }}>{s.risk} Risk</span>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+              <div style={{ fontSize:"22px", fontWeight:"900", color: impactIsPos(s.impact)?"#34D399":"#F87171" }}>{s.impact}</div>
+              <span style={{ fontSize:"10px", padding:"2px 8px", borderRadius:"4px", background:"#1A2740", color:"#60A5FA", fontWeight:"700", fontFamily:"JetBrains Mono,monospace" }}>{s.tag}</span>
+            </div>
+            {selected===i && (
+              <div className="fade-in" style={{ marginTop:"12px", padding:"12px", background:"#060B14", borderRadius:"8px", fontSize:"11px", color:"#7A90A8", lineHeight:"1.6", borderLeft:"3px solid #3B82F6" }}>
+                {s.description}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Comparison Panel */}
+      {selected !== null && (
+        <div className="fade-in" style={{ background:"#0B1220", border:"1px solid #1A2740", borderRadius:"12px", padding:"20px" }}>
+          <div style={{ fontSize:"13px", fontWeight:"800", color:"#E8F0FA", marginBottom:"16px" }}>
+            📊 Impact Analysis — <span style={{ color:"#60A5FA" }}>{scenarios[selected].name}</span>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))", gap:"12px" }}>
+            {[
+              { label:"Financial Impact",  baseline:"—",         scenario:scenarios[selected].impact,  up: impactIsPos(scenarios[selected].impact) },
+              { label:"Risk Level",        baseline:"Baseline",  scenario:scenarios[selected].risk,     up: scenarios[selected].risk==="Low" },
+              { label:"Planning Horizon",  baseline:"Rolling 4w",scenario:scenarios[selected].horizon,  up: true },
+              { label:"Demand Tag",        baseline:"Normal",    scenario:scenarios[selected].tag,      up: impactIsPos(scenarios[selected].impact) },
+            ].map((m,i) => (
+              <div key={i} style={{ background:"#060B14", borderRadius:"8px", padding:"14px" }}>
+                <div style={{ fontSize:"9px", color:"#3A4D6A", fontWeight:"700", textTransform:"uppercase", letterSpacing:"0.6px", marginBottom:"10px" }}>{m.label}</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:"6px" }}>
+                  <div>
+                    <div style={{ fontSize:"9px", color:"#3A4D6A" }}>Baseline</div>
+                    <div className="mono" style={{ fontSize:"13px", fontWeight:"700", color:"#4A6080" }}>{m.baseline}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:"9px", color:"#3A4D6A" }}>Scenario</div>
+                    <div className="mono" style={{ fontSize:"14px", fontWeight:"800", color: m.up?"#34D399":"#F87171" }}>{m.scenario}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop:"16px", display:"flex", gap:"10px", flexWrap:"wrap" }}>
+            <button style={{ background:"#1D4ED8", border:"none", color:"#fff", padding:"9px 20px", borderRadius:"7px", fontSize:"12px", cursor:"pointer", fontWeight:"800" }}>▶ Run Simulation</button>
+            <button style={{ background:"#0F1825", border:"1px solid #1A2740", color:"#7EB8F7", padding:"9px 16px", borderRadius:"7px", fontSize:"12px", cursor:"pointer", fontWeight:"700" }}>📋 Save Scenario</button>
+            <button style={{ background:"#0F1825", border:"1px solid #1A2740", color:"#7EB8F7", padding:"9px 16px", borderRadius:"7px", fontSize:"12px", cursor:"pointer", fontWeight:"700" }}>📤 Export Plan</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────── MAIN APP ─────────────── */
+function App() {
+  const [industry, setIndustry] = useState("textile");
+  const [tab, setTab] = useState("scenarios");
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([
+    { role:"ai", text:"Hi! I'm your supply chain AI. Ask me about demand forecasts, scenario impacts, or planning recommendations for your industry." }
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const chatEndRef = useRef(null);
+
+  const ind = industries.find(i => i.id === industry);
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior:"smooth" }); }, [chatMessages]);
+
+  const sendChat = async () => {
+    if (!chatInput.trim() || aiLoading) return;
+    const userMsg = chatInput.trim();
+    setChatInput("");
+    setChatMessages(m => [...m, { role:"user", text:userMsg }]);
+    setAiLoading(true);
+    try {
+      const indLabel = industries.find(i => i.id===industry)?.label || industry;
+      const scens = scenarioTemplates[industry]?.map(s => s.name).join(", ") || "";
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({
+          model:"claude-sonnet-4-20250514",
+          max_tokens:1000,
+          system:`You are a supply chain planning AI embedded in Kinaxis RapidResponse for small-scale industries in India. Current industry: ${indLabel}. Available scenarios: ${scens}. Help with demand planning, load demand formats, what-if scenarios, and supply risk. Be concise (2–3 sentences), practical, and reference INR (₹) for financials.`,
+          messages:[{ role:"user", content:userMsg }]
+        })
+      });
+      const d = await res.json();
+      setChatMessages(m => [...m, { role:"ai", text: d.content?.[0]?.text || "Unable to process." }]);
+    } catch { setChatMessages(m => [...m, { role:"ai", text:"Connection error. Please retry." }]); }
+    setAiLoading(false);
+  };
+
+  const tabs = [
+    { id:"scenarios",    label:"Scenario Planning", icon:"🔀" },
+    { id:"loaddemand",   label:"Load Demand",        icon:"📥" },
+  ];
+
+  return (
+    <div style={{ fontFamily:"'Syne',sans-serif", background:"#080C14", minHeight:"100vh", color:"#C8D8E8", display:"flex", flexDirection:"column" }}>
+
+      {/* NAV */}
+      <nav style={{ background:"#0B1220", borderBottom:"1px solid #1A2740", padding:"0 16px", display:"flex", alignItems:"center", height:"52px", gap:"12px", position:"sticky", top:0, zIndex:100 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"9px" }}>
+          <div style={{ width:"32px", height:"32px", background:"linear-gradient(135deg,#3B82F6,#1D4ED8)", borderRadius:"9px", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:"900", fontSize:"17px", color:"#fff", boxShadow:"0 0 14px #3B82F660" }}>K</div>
+          <span style={{ fontWeight:"800", fontSize:"15px", color:"#E8F0FA", letterSpacing:"-0.3px" }}>RapidResponse</span>
+          <span style={{ background:"#1A2E4A", color:"#60A5FA", fontSize:"9px", padding:"2px 7px", borderRadius:"4px", fontWeight:"700", letterSpacing:"0.5px" }}>MAESTRO</span>
+        </div>
+        <div style={{ marginLeft:"auto", display:"flex", gap:"8px", alignItems:"center" }}>
+          <span style={{ background:"#10B98118", color:"#34D399", padding:"3px 10px", borderRadius:"12px", fontSize:"10px", border:"1px solid #10B98140", fontWeight:"700" }}>● LIVE</span>
+          <button onClick={() => setChatOpen(c => !c)}
+            style={{ background: chatOpen?"#1D4ED8":"#0F1825", border:`1px solid ${chatOpen?"#3B82F6":"#1A2740"}`, color:"#fff", padding:"7px 14px", borderRadius:"6px", cursor:"pointer", fontSize:"12px", fontWeight:"700" }}>
+            🤖 AI Planner
+          </button>
+        </div>
+      </nav>
+
+      {/* INDUSTRY SELECTOR */}
+      <div style={{ background:"#0B1220", borderBottom:"1px solid #1A2740", padding:"10px 16px", display:"flex", gap:"8px", overflowX:"auto", flexShrink:0 }}>
+        <span style={{ fontSize:"11px", color:"#3A4D6A", fontWeight:"700", alignSelf:"center", whiteSpace:"nowrap", marginRight:"4px" }}>INDUSTRY:</span>
+        {industries.map(ind => (
+          <button key={ind.id} onClick={() => setIndustry(ind.id)}
+            style={{ background: industry===ind.id ? `${ind.color}22` : "#0F1825", border:`1px solid ${industry===ind.id ? ind.color+"80" : "#1A2740"}`, color: industry===ind.id ? ind.color : "#4A6080", padding:"6px 14px", borderRadius:"20px", cursor:"pointer", fontSize:"12px", fontWeight:"700", whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:"6px", transition:"all 0.15s" }}>
+            {ind.icon} {ind.label}
+          </button>
+        ))}
+      </div>
+
+      {/* TAB BAR */}
+      <div style={{ background:"#0B1220", borderBottom:"1px solid #1A2740", display:"flex" }}>
+        {tabs.map(t => (
+          <button key={t.id} className="tab-btn" onClick={() => setTab(t.id)}
+            style={{ background:"none", border:"none", borderBottom: tab===t.id?"2px solid #3B82F6":"2px solid transparent", color: tab===t.id?"#60A5FA":"#4A6080", padding:"12px 22px", cursor:"pointer", fontSize:"13px", fontWeight: tab===t.id?"800":"600", whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:"7px" }}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+        <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", paddingRight:"16px" }}>
+          <span style={{ fontSize:"11px", color:"#3A4D6A" }}>
+            {ind.icon} <span style={{ color:ind.color, fontWeight:"700" }}>{ind.label}</span>
+          </span>
+        </div>
+      </div>
+
+      {/* CONTENT */}
+      <div style={{ flex:1, overflow:"auto", padding:"20px" }}>
+        {tab === "scenarios"  && <ScenarioPlanning  industryId={industry} />}
+        {tab === "loaddemand" && <LoadDemandTable    industryId={industry} />}
+      </div>
+
+      {/* AI CHAT */}
+      {chatOpen && (
+        <div style={{ position:"fixed", bottom:0, right:0, width:"340px", height:"480px", background:"#0B1220", borderTop:"1px solid #1A2740", borderLeft:"1px solid #1A2740", borderRadius:"12px 0 0 0", display:"flex", flexDirection:"column", zIndex:200, boxShadow:"0 -8px 40px #000A" }}>
+          <div style={{ padding:"12px 16px", borderBottom:"1px solid #1A2740", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div>
+              <div style={{ fontSize:"13px", fontWeight:"800", color:"#E8F0FA" }}>🤖 AI Planner</div>
+              <div style={{ fontSize:"10px", color:"#34D399" }}>● {ind.icon} {ind.label}</div>
+            </div>
+            <button onClick={() => setChatOpen(false)} style={{ background:"#1A2740", border:"none", color:"#64748B", cursor:"pointer", fontSize:"18px", width:"28px", height:"28px", borderRadius:"6px" }}>×</button>
+          </div>
+          <div style={{ flex:1, overflow:"auto", padding:"12px", display:"flex", flexDirection:"column", gap:"10px" }}>
+            {chatMessages.map((msg,i) => (
+              <div key={i} style={{ display:"flex", justifyContent: msg.role==="user"?"flex-end":"flex-start" }}>
+                <div style={{ maxWidth:"88%", padding:"10px 13px", borderRadius: msg.role==="user"?"14px 14px 2px 14px":"14px 14px 14px 2px", background: msg.role==="user"?"#1D4ED8":"#1A2740", fontSize:"12px", color:"#C8D8E8", lineHeight:"1.65" }}>{msg.text}</div>
+              </div>
+            ))}
+            {aiLoading && (
+              <div style={{ display:"flex" }}>
+                <div style={{ padding:"10px 13px", borderRadius:"14px 14px 14px 2px", background:"#1A2740", fontSize:"12px", color:"#4A6080" }}>Analysing plan…</div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+          <div style={{ padding:"12px", borderTop:"1px solid #1A2740" }}>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:"5px", marginBottom:"8px" }}>
+              {["Best scenario?","Peak demand week?","Supply risk?"].map(q => (
+                <button key={q} className="pill-btn" onClick={() => setChatInput(q)} style={{ background:"#060B14", border:"1px solid #1A2740", color:"#60A5FA", padding:"4px 10px", borderRadius:"20px", fontSize:"10px", cursor:"pointer", fontWeight:"700" }}>{q}</button>
+              ))}
+            </div>
+            <div style={{ display:"flex", gap:"8px" }}>
+              <input value={chatInput} onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => e.key==="Enter" && sendChat()}
+                placeholder="Ask about your supply plan…"
+                style={{ flex:1, background:"#060B14", border:"1px solid #1A2740", color:"#C8D8E8", padding:"9px 12px", borderRadius:"8px", fontSize:"12px", outline:"none" }} />
+              <button onClick={sendChat} disabled={aiLoading}
+                style={{ background:"#1D4ED8", border:"none", color:"#fff", padding:"9px 14px", borderRadius:"8px", cursor:"pointer", fontSize:"15px", opacity: aiLoading?0.5:1 }}>→</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
