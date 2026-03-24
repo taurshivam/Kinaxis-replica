@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kinaxis RapidResponse – Maestro</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0F1117; font-family: 'Segoe UI', sans-serif; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0F1117; }
+    ::-webkit-scrollbar-thumb { background: #1E2D4A; border-radius: 3px; }
+    input::placeholder { color: #475569; }
+    select option { background: #1E2D4A; color: #E2E8F0; }
+
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+    @keyframes shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+
+    .tab-content { animation: fadeIn 0.25s ease; }
+
+    .abc-a { background: linear-gradient(135deg, #EF444422, #EF444408); border-color: #EF444440 !important; }
+    .abc-b { background: linear-gradient(135deg, #F59E0B22, #F59E0B08); border-color: #F59E0B40 !important; }
+    .abc-c { background: linear-gradient(135deg, #10B98122, #10B98108); border-color: #10B98140 !important; }
+
+    .scenario-card:hover { transform: translateY(-2px); transition: transform 0.2s; }
+    .exception-row:hover { background: #1E2D4A !important; }
+
+    .badge-a { background: #EF444422; color: #EF4444; border: 1px solid #EF444444; }
+    .badge-b { background: #F59E0B22; color: #F59E0B; border: 1px solid #F59E0B44; }
+    .badge-c { background: #10B98122; color: #10B981; border: 1px solid #10B98144; }
+
+    .progress-bar { height: 6px; border-radius: 3px; background: #1E2D4A; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+
+const { useState, useEffect, useRef, useMemo } = React;
+
+/* ─── MOCK DATA ──────────────────────────────────────────── */
+const mockData = {
+  kpis: [
+    { label:"On-Time Delivery", value:"94.2%", trend:"+1.3%", status:"good", icon:"📦" },
+    { label:"Inventory Turns",  value:"8.7x",  trend:"-0.2x", status:"warn", icon:"🔄" },
+    { label:"Demand Accuracy",  value:"87.5%", trend:"+2.1%", status:"good", icon:"📊" },
+    { label:"Supply Coverage",  value:"34 days",trend:"+3d",  status:"warn", icon:"🏭" },
+    { label:"Exceptions",       value:"47",    trend:"-12",   status:"good", icon:"⚠️" },
+    { label:"Fill Rate",        value:"98.1%", trend:"+0.4%", status:"good", icon:"✅" },
+  ],
+  demandSupply: [
+    { week:"W1", demand:1200, supply:1100, inventory:800 },
+    { week:"W2", demand:1350, supply:1300, inventory:750 },
+    { week:"W3", demand:1100, supply:1200, inventory:850 },
+    { week:"W4", demand:1500, supply:1400, inventory:750 },
+    { week:"W5", demand:1450, supply:1500, inventory:800 },
+    { week:"W6", demand:1600, supply:1550, inventory:750 },
+    { week:"W7", demand:1300, supply:1350, inventory:800 },
+    { week:"W8", demand:1700, supply:1600, inventory:700 },
+  ],
+  exceptions: [
+    { id:"EXC-001", type:"Supply Shortage",  item:"PCB-4421",    site:"Austin TX",    severity:"High",   date:"2026-03-08", status:"Open"     },
+    { id:"EXC-002", type:"Demand Spike",     item:"Assembly-7B", site:"Toronto CA",   severity:"Medium", date:"2026-03-07", status:"In Review"},
+    { id:"EXC-003", type:"Late Supplier",    item:"Chip-X200",   site:"San Jose CA",  severity:"High",   date:"2026-03-07", status:"Open"     },
+    { id:"EXC-004", type:"Excess Inventory", item:"Housing-A3",  site:"Dublin IE",    severity:"Low",    date:"2026-03-06", status:"Resolved" },
+    { id:"EXC-005", type:"Capacity Breach",  item:"Line-03",     site:"Munich DE",    severity:"Medium", date:"2026-03-05", status:"In Review"},
+    { id:"EXC-006", type:"Forecast Miss",    item:"SKU-8821",    site:"Singapore SG", severity:"Low",    date:"2026-03-04", status:"Resolved" },
+  ],
+  workbench: [
+    { part:"PCB-4421",  description:"Printed Circuit Board", site:"Austin TX",   onHand:240,  onOrder:500, demand:820,  gap:-80,  status:"Critical" },
+    { part:"CHIP-X200", description:"Microcontroller Unit",  site:"San Jose CA", onHand:1200, onOrder:0,   demand:900,  gap:300,  status:"OK"       },
+    { part:"ASSM-7B",   description:"Sub-Assembly Unit B",   site:"Toronto CA",  onHand:80,   onOrder:200, demand:420,  gap:-140, status:"Warning"  },
+    { part:"HSG-A3",    description:"Plastic Housing A3",    site:"Dublin IE",   onHand:3400, onOrder:1000,demand:1800, gap:2600, status:"Excess"   },
+    { part:"CAP-220UF", description:"Capacitor 220µF",       site:"Austin TX",   onHand:5500, onOrder:0,   demand:4200, gap:1300, status:"OK"       },
+    { part:"MTR-DC12V", description:"DC Motor 12V",          site:"Munich DE",   onHand:120,  onOrder:300, demand:500,  gap:-80,  status:"Warning"  },
+  ],
+  scenarios: [
+    { name:"Baseline Plan",      status:"Active",   date:"Mar 8", delta:"—"      },
+    { name:"Demand +15%",        status:"Draft",    date:"Mar 7", delta:"+$1.2M" },
+    { name:"Supplier Delay 2wk", status:"Draft",    date:"Mar 6", delta:"-$840K" },
+    { name:"Expedite Option A",  status:"Approved", date:"Mar 5", delta:"+$320K" },
+  ],
+
+  /* ── ABC Inventory items ── */
+  abcItems: [
+    { sku:"PCB-4421",  name:"Printed Circuit Board",  annualUsage:9840, unitCost:42.5,  category:null },
+    { sku:"CHIP-X200", name:"Microcontroller Unit",   annualUsage:10800,unitCost:38.0,  category:null },
+    { sku:"ASSM-7B",   name:"Sub-Assembly Unit B",    annualUsage:5040, unitCost:62.0,  category:null },
+    { sku:"HSG-A3",    name:"Plastic Housing A3",     annualUsage:21600,unitCost:4.5,   category:null },
+    { sku:"CAP-220UF", name:"Capacitor 220µF",        annualUsage:50400,unitCost:0.85,  category:null },
+    { sku:"MTR-DC12V", name:"DC Motor 12V",           annualUsage:6000, unitCost:29.0,  category:null },
+    { sku:"SCR-M3x10", name:"M3×10 Screw (pack 100)",annualUsage:120000,unitCost:0.12, category:null },
+    { sku:"LED-R5MM",  name:"Red LED 5mm",            annualUsage:85000,unitCost:0.08,  category:null },
+    { sku:"RES-10K",   name:"Resistor 10kΩ",          annualUsage:95000,unitCost:0.05,  category:null },
+    { sku:"WIRE-AWG22",name:"22 AWG Wire (m)",        annualUsage:18000,unitCost:0.35,  category:null },
+    { sku:"CONN-DB9",  name:"DB9 Connector",          annualUsage:4200, unitCost:1.80,  category:null },
+    { sku:"PSU-12V5A", name:"12V 5A Power Supply",    annualUsage:2400, unitCost:18.50, category:null },
+  ],
+
+  /* ── SME Scenario templates ── */
+  smeScenarios: [
+    {
+      id:"S1", name:"Seasonal Demand Surge", icon:"📈", tag:"Demand",
+      description:"Model a 25–40% spike in orders during festival/harvest seasons.",
+      baselineSales: 480000, baselineStock: 120000, baselineCost: 310000,
+      params: [
+        { key:"demandIncrease", label:"Demand Increase (%)", min:10, max:60, default:30 },
+        { key:"leadTimeChange", label:"Lead Time Change (days)", min:-5, max:15, default:5 },
+        { key:"laborScale",     label:"Labor Scale-Up (%)",     min:0,  max:50, default:20 },
+      ]
+    },
+    {
+      id:"S2", name:"Supplier Price Hike", icon:"💸", tag:"Cost",
+      description:"Assess impact of a 10–30% raw material cost increase from key supplier.",
+      baselineSales: 480000, baselineStock: 120000, baselineCost: 310000,
+      params: [
+        { key:"costIncrease",  label:"Cost Increase (%)",       min:5,  max:40, default:15 },
+        { key:"altSupplier",   label:"Alt Supplier Premium (%)",min:0,  max:25, default:8  },
+        { key:"passThrough",   label:"Pass-Through to Price (%)",min:0, max:100,default:50 },
+      ]
+    },
+    {
+      id:"S3", name:"Machinery Breakdown", icon:"🔧", tag:"Risk",
+      description:"Simulate production halt of 1–3 weeks and recovery plan.",
+      baselineSales: 480000, baselineStock: 120000, baselineCost: 310000,
+      params: [
+        { key:"downDays",       label:"Downtime (days)",          min:1,  max:21, default:7  },
+        { key:"repairCost",     label:"Repair Cost (₹ 000s)",     min:10, max:500,default:80 },
+        { key:"outsourcePct",   label:"Outsource Production (%)", min:0,  max:100,default:40 },
+      ]
+    },
+    {
+      id:"S4", name:"New Market Entry", icon:"🌍", tag:"Growth",
+      description:"Evaluate capacity & cash-flow impact of entering a new regional market.",
+      baselineSales: 480000, baselineStock: 120000, baselineCost: 310000,
+      params: [
+        { key:"marketSize",     label:"New Market Revenue (₹ 000s)",min:50, max:2000,default:300 },
+        { key:"inventoryBuild", label:"Inventory Build-Up (₹ 000s)",min:20, max:500, default:80  },
+        { key:"logisticsCost",  label:"Logistics Cost (₹ 000s)",    min:10, max:200, default:40  },
+      ]
+    },
+  ],
+};
+
+/* ─── HELPERS ─────────────────────────────────────────────── */
+const statusColor   = { Critical:"#EF4444", Warning:"#F59E0B", OK:"#10B981", Excess:"#8B5CF6" };
+const severityColor = { High:"#EF4444", Medium:"#F59E0B", Low:"#6B7280" };
+const exStatusColor = { Open:"#EF4444", "In Review":"#F59E0B", Resolved:"#10B981" };
+
+function computeABC(items) {
+  const withValue = items.map(i => ({ ...i, annualValue: i.annualUsage * i.unitCost }));
+  const total = withValue.reduce((s, i) => s + i.annualValue, 0);
+  const sorted = [...withValue].sort((a, b) => b.annualValue - a.annualValue);
+  let cumulative = 0;
+  return sorted.map(item => {
+    cumulative += item.annualValue;
+    const pct = cumulative / total;
+    const category = pct <= 0.80 ? "A" : pct <= 0.95 ? "B" : "C";
+    return { ...item, category, annualValuePct: (item.annualValue / total) * 100 };
+  });
+}
+
+function fmt(n) { return n.toLocaleString("en-IN", { maximumFractionDigits: 0 }); }
+function fmtCurr(n) { return "₹" + fmt(n); }
+
+/* ─── BAR CHART ───────────────────────────────────────────── */
+function BarChart({ data }) {
+  const maxVal = Math.max(...data.flatMap(d => [d.demand, d.supply, d.inventory]));
+  return (
+    <div style={{ display:"flex", alignItems:"flex-end", gap:"6px", height:"120px", padding:"0 4px" }}>
+      {data.map((d, i) => (
+        <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:"2px" }}>
+          <div style={{ display:"flex", alignItems:"flex-end", gap:"2px", height:"100px" }}>
+            <div style={{ width:"8px", height:`${(d.demand/maxVal)*100}px`, background:"#3B82F6", borderRadius:"2px 2px 0 0" }} />
+            <div style={{ width:"8px", height:`${(d.supply/maxVal)*100}px`, background:"#10B981", borderRadius:"2px 2px 0 0" }} />
+            <div style={{ width:"8px", height:`${(d.inventory/maxVal)*100}px`, background:"#F59E0B", borderRadius:"2px 2px 0 0" }} />
+          </div>
+          <span style={{ fontSize:"9px", color:"#64748B" }}>{d.week}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── SME SCENARIO TAB ────────────────────────────────────── */
+function SMEScenarioTab() {
+  const [selected, setSelected] = useState(0);
+  const [paramValues, setParamValues] = useState({});
+  const [result, setResult] = useState(null);
+  const [running, setRunning] = useState(false);
+
+  const sc = mockData.smeScenarios[selected];
+
+  const getParam = (key, defaultVal) => paramValues[`${sc.id}_${key}`] ?? defaultVal;
+  const setParam = (key, val) => setParamValues(p => ({ ...p, [`${sc.id}_${key}`]: Number(val) }));
+
+  const tagColor = { Demand:"#3B82F6", Cost:"#EF4444", Risk:"#F59E0B", Growth:"#10B981" };
+
+  const runScenario = () => {
+    setRunning(true);
+    setTimeout(() => {
+      const { baselineSales, baselineStock, baselineCost } = sc;
+      let adjSales = baselineSales;
+      let adjCost  = baselineCost;
+      let adjStock = baselineStock;
+      let notes    = [];
+
+      if (sc.id === "S1") {
+        const di = getParam("demandIncrease", 30);
+        const lt = getParam("leadTimeChange", 5);
+        const lb = getParam("laborScale", 20);
+        adjSales = baselineSales * (1 + di / 100);
+        adjCost  = baselineCost * (1 + (lb / 100) * 0.4);
+        adjStock = baselineStock * (1 + (lt / 10) * 0.15);
+        notes = [
+          `Revenue opportunity: ${fmtCurr((adjSales - baselineSales) / 1000)}K`,
+          `Lead time adds ${lt}d — reorder early to avoid stockout`,
+          `Labor cost impact: +${fmtCurr((adjCost - baselineCost) / 1000)}K`,
+        ];
+      } else if (sc.id === "S2") {
+        const ci = getParam("costIncrease", 15);
+        const ap = getParam("altSupplier", 8);
+        const pt = getParam("passThrough", 50);
+        const rawCostHike = baselineCost * (ci / 100);
+        adjCost  = baselineCost + rawCostHike * (1 - ap / 100);
+        adjSales = baselineSales * (1 + (ci * pt) / 10000);
+        adjStock = baselineStock;
+        notes = [
+          `Margin erosion if not passed through: ${fmtCurr(rawCostHike / 1000)}K`,
+          `Alt supplier saves ~${fmtCurr((rawCostHike * ap / 100) / 1000)}K`,
+          `Price pass-through at ${pt}% recovers ${fmtCurr(((adjSales - baselineSales)) / 1000)}K`,
+        ];
+      } else if (sc.id === "S3") {
+        const dd = getParam("downDays", 7);
+        const rc = getParam("repairCost", 80) * 1000;
+        const op = getParam("outsourcePct", 40);
+        const lostProd = (baselineSales / 365) * dd;
+        const outsourceRecov = lostProd * (op / 100) * 1.12;
+        adjSales = baselineSales - lostProd + outsourceRecov;
+        adjCost  = baselineCost + rc + lostProd * (op / 100) * 0.12;
+        adjStock = baselineStock - lostProd * 0.3;
+        notes = [
+          `Lost production value: ${fmtCurr(lostProd / 1000)}K`,
+          `Outsourcing recovers ${fmtCurr(outsourceRecov / 1000)}K at 12% premium`,
+          `Repair + outsource cost: ${fmtCurr((rc + lostProd * (op / 100) * 0.12) / 1000)}K`,
+        ];
+      } else if (sc.id === "S4") {
+        const ms = getParam("marketSize", 300) * 1000;
+        const ib = getParam("inventoryBuild", 80) * 1000;
+        const lc = getParam("logisticsCost", 40) * 1000;
+        adjSales = baselineSales + ms;
+        adjCost  = baselineCost + lc + ib * 0.2;
+        adjStock = baselineStock + ib;
+        notes = [
+          `New market revenue: +${fmtCurr(ms / 1000)}K`,
+          `Working capital needed: ${fmtCurr(ib / 1000)}K (inventory build)`,
+          `Net profit impact: +${fmtCurr((ms - lc - ib * 0.2) / 1000)}K`,
+        ];
+      }
+
+      const netMarginBase = ((baselineSales - baselineCost) / baselineSales) * 100;
+      const netMarginAdj  = ((adjSales - adjCost) / adjSales) * 100;
+
+      setResult({ adjSales, adjCost, adjStock, notes, netMarginBase, netMarginAdj,
+        deltaRevenue: adjSales - baselineSales,
+        deltaCost: adjCost - baselineCost,
+        deltaMargin: netMarginAdj - netMarginBase,
+      });
+      setRunning(false);
+    }, 900);
+  };
+
+  return (
+    <div className="tab-content">
+      <div style={{ marginBottom:"18px" }}>
+        <h2 style={{ fontSize:"18px", fontWeight:"800", color:"#F1F5F9", marginBottom:"4px" }}>SME Scenario Planning</h2>
+        <p style={{ fontSize:"12px", color:"#64748B" }}>Simulate real-world supply chain disruptions & growth events for small & medium industries</p>
+      </div>
+
+      {/* Scenario Cards */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(210px,1fr))", gap:"12px", marginBottom:"20px" }}>
+        {mockData.smeScenarios.map((s, i) => (
+          <div key={s.id} className="scenario-card"
+            onClick={() => { setSelected(i); setResult(null); }}
+            style={{ background:"#161B2E", border:`2px solid ${selected===i?"#3B82F6":"#1E2D4A"}`, borderRadius:"12px", padding:"16px", cursor:"pointer",
+              boxShadow: selected===i ? "0 0 0 1px #3B82F640, 0 4px 20px #3B82F620" : "none", transition:"all 0.2s" }}>
+            <div style={{ fontSize:"28px", marginBottom:"8px" }}>{s.icon}</div>
+            <div style={{ display:"flex", alignItems:"center", gap:"7px", marginBottom:"6px" }}>
+              <div style={{ fontSize:"13px", fontWeight:"800", color:"#E2E8F0" }}>{s.name}</div>
+            </div>
+            <span style={{ fontSize:"9px", fontWeight:"700", padding:"2px 7px", borderRadius:"4px",
+              background:`${tagColor[s.tag]}22`, color:tagColor[s.tag], border:`1px solid ${tagColor[s.tag]}44` }}>{s.tag}</span>
+            <p style={{ fontSize:"11px", color:"#64748B", marginTop:"8px", lineHeight:"1.5" }}>{s.description}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Parameter Sliders */}
+      <div style={{ background:"#161B2E", border:"1px solid #1E2D4A", borderRadius:"12px", padding:"20px", marginBottom:"16px" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"16px" }}>
+          <h3 style={{ fontSize:"14px", fontWeight:"700", color:"#E2E8F0" }}>
+            {sc.icon} Configure: {sc.name}
+          </h3>
+          <button onClick={runScenario} disabled={running}
+            style={{ background: running ? "#1E2D4A" : "linear-gradient(135deg,#3B82F6,#1D4ED8)", border:"none", color:"#fff",
+              padding:"9px 20px", borderRadius:"8px", cursor: running ? "not-allowed" : "pointer", fontSize:"13px", fontWeight:"700",
+              opacity: running ? 0.7 : 1 }}>
+            {running ? "⏳ Running..." : "▶ Run Scenario"}
+          </button>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))", gap:"20px" }}>
+          {sc.params.map(p => {
+            const val = getParam(p.key, p.default);
+            return (
+              <div key={p.key}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"8px" }}>
+                  <span style={{ fontSize:"12px", color:"#94A3B8", fontWeight:"600" }}>{p.label}</span>
+                  <span style={{ fontSize:"13px", color:"#60A5FA", fontWeight:"800" }}>{val}</span>
+                </div>
+                <input type="range" min={p.min} max={p.max} value={val}
+                  onChange={e => setParam(p.key, e.target.value)}
+                  style={{ width:"100%", accentColor:"#3B82F6", cursor:"pointer" }} />
+                <div style={{ display:"flex", justifyContent:"space-between", fontSize:"9px", color:"#475569", marginTop:"3px" }}>
+                  <span>{p.min}</span><span>{p.max}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Results */}
+      {result && (
+        <div style={{ animation:"fadeIn 0.3s ease" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:"10px", marginBottom:"14px" }}>
+            {[
+              { label:"Projected Revenue", value:fmtCurr(result.adjSales/1000)+"K",
+                delta: result.deltaRevenue >= 0 ? `+${fmtCurr(result.deltaRevenue/1000)}K` : fmtCurr(result.deltaRevenue/1000)+"K",
+                positive: result.deltaRevenue >= 0 },
+              { label:"Total Cost", value:fmtCurr(result.adjCost/1000)+"K",
+                delta: result.deltaCost >= 0 ? `+${fmtCurr(result.deltaCost/1000)}K` : fmtCurr(result.deltaCost/1000)+"K",
+                positive: result.deltaCost <= 0 },
+              { label:"Inventory Position", value:fmtCurr(result.adjStock/1000)+"K",
+                delta:"Adjusted", positive:true },
+              { label:"Net Margin", value:result.netMarginAdj.toFixed(1)+"%",
+                delta: result.deltaMargin >= 0 ? `+${result.deltaMargin.toFixed(1)}pp` : result.deltaMargin.toFixed(1)+"pp",
+                positive: result.deltaMargin >= 0 },
+            ].map((m, i) => (
+              <div key={i} style={{ background:"#161B2E", border:"1px solid #1E2D4A", borderRadius:"10px", padding:"14px", position:"relative", overflow:"hidden" }}>
+                <div style={{ position:"absolute", top:0, left:0, right:0, height:"3px",
+                  background: m.positive ? "#10B981" : "#EF4444" }} />
+                <div style={{ fontSize:"10px", color:"#64748B", fontWeight:"700", textTransform:"uppercase", marginBottom:"6px" }}>{m.label}</div>
+                <div style={{ fontSize:"20px", fontWeight:"900", color:"#F1F5F9" }}>{m.value}</div>
+                <div style={{ fontSize:"11px", color: m.positive ? "#10B981" : "#EF4444", marginTop:"4px", fontWeight:"700" }}>{m.delta}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ background:"#161B2E", border:"1px solid #1E2D4A", borderRadius:"10px", padding:"16px" }}>
+            <h4 style={{ fontSize:"13px", fontWeight:"700", color:"#E2E8F0", marginBottom:"12px" }}>💡 Planner Insights</h4>
+            <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+              {result.notes.map((n, i) => (
+                <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:"10px", padding:"10px 12px",
+                  background:"#0F1117", borderRadius:"8px", border:"1px solid #1E2D4A" }}>
+                  <span style={{ color:"#3B82F6", fontSize:"14px", flexShrink:0 }}>→</span>
+                  <span style={{ fontSize:"12px", color:"#CBD5E1", lineHeight:"1.5" }}>{n}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Margin comparison bar */}
+            <div style={{ marginTop:"14px" }}>
+              <div style={{ fontSize:"11px", color:"#64748B", marginBottom:"8px", fontWeight:"600" }}>Margin Comparison</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:"6px" }}>
+                {[
+                  { label:"Baseline", pct: result.netMarginBase, color:"#3B82F6" },
+                  { label:"Scenario", pct: result.netMarginAdj,  color: result.deltaMargin >= 0 ? "#10B981" : "#EF4444" },
+                ].map(b => (
+                  <div key={b.label} style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                    <span style={{ fontSize:"11px", color:"#94A3B8", width:"60px" }}>{b.label}</span>
+                    <div className="progress-bar" style={{ flex:1 }}>
+                      <div className="progress-fill" style={{ width:`${Math.max(0,Math.min(100,b.pct*3))}%`, background:b.color }} />
+                    </div>
+                    <span style={{ fontSize:"12px", fontWeight:"700", color:b.color, width:"40px", textAlign:"right" }}>{b.pct.toFixed(1)}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!result && !running && (
+        <div style={{ textAlign:"center", padding:"30px", color:"#475569", fontSize:"13px" }}>
+          Configure parameters above and click <strong style={{ color:"#60A5FA" }}>▶ Run Scenario</strong> to see projections
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── ABC CLASSIFICATION TAB ─────────────────────────────── */
+function ABCTab() {
+  const [filter, setFilter] = useState("All");
+  const [sortBy, setSortBy] = useState("annualValue");
+
+  const classified = useMemo(() => computeABC(mockData.abcItems), []);
+
+  const filtered = classified
+    .filter(i => filter === "All" || i.category === filter)
+    .sort((a, b) => sortBy === "annualValue" ? b.annualValue - a.annualValue
+      : sortBy === "sku" ? a.sku.localeCompare(b.sku)
+      : b.unitCost - a.unitCost);
+
+  const summary = {
+    A: classified.filter(i => i.category === "A"),
+    B: classified.filter(i => i.category === "B"),
+    C: classified.filter(i => i.category === "C"),
+  };
+  const totalValue = classified.reduce((s, i) => s + i.annualValue, 0);
+
+  const abcMeta = {
+    A: { color:"#EF4444", bg:"#EF444415", label:"High Value", desc:"Tight control, frequent review, accurate forecasting", policy:"Weekly cycle count · Safety stock: high · EOQ: precise" },
+    B: { color:"#F59E0B", bg:"#F59E0B15", label:"Medium Value", desc:"Moderate control, periodic review, standard forecasting",policy:"Monthly cycle count · Safety stock: moderate · EOQ: standard" },
+    C: { color:"#10B981", bg:"#10B98115", label:"Low Value",  desc:"Minimal control, bulk ordering, simple replenishment",   policy:"Quarterly count · Safety stock: low · EOQ: bulk" },
+  };
+
+  return (
+    <div className="tab-content">
+      <div style={{ marginBottom:"18px" }}>
+        <h2 style={{ fontSize:"18px", fontWeight:"800", color:"#F1F5F9", marginBottom:"4px" }}>ABC Inventory Classification</h2>
+        <p style={{ fontSize:"12px", color:"#64748B" }}>Pareto-based classification — prioritise control effort by annual consumption value</p>
+      </div>
+
+      {/* Summary cards */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"12px", marginBottom:"18px" }}>
+        {["A","B","C"].map(cat => {
+          const items = summary[cat];
+          const catValue = items.reduce((s, i) => s + i.annualValue, 0);
+          const meta = abcMeta[cat];
+          return (
+            <div key={cat} style={{ background:"#161B2E", border:`1px solid ${meta.color}33`,
+              borderRadius:"12px", padding:"18px", position:"relative", overflow:"hidden" }}>
+              <div style={{ position:"absolute", top:0, left:0, right:0, height:"3px", background:meta.color }} />
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:"10px" }}>
+                <div>
+                  <div style={{ fontSize:"11px", color:"#64748B", fontWeight:"700", textTransform:"uppercase", letterSpacing:"0.5px" }}>Class {cat}</div>
+                  <div style={{ fontSize:"13px", fontWeight:"700", color:meta.color, marginTop:"2px" }}>{meta.label}</div>
+                </div>
+                <div style={{ width:"38px", height:"38px", borderRadius:"10px",
+                  background:meta.bg, display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:"20px", fontWeight:"900", color:meta.color }}>{cat}</div>
+              </div>
+              <div style={{ fontSize:"22px", fontWeight:"900", color:"#F1F5F9", marginBottom:"4px" }}>
+                {items.length} <span style={{ fontSize:"12px", color:"#64748B", fontWeight:"400" }}>SKUs</span>
+              </div>
+              <div style={{ fontSize:"13px", color:meta.color, fontWeight:"700" }}>
+                {fmtCurr(catValue)} <span style={{ fontSize:"10px", color:"#64748B", fontWeight:"400" }}>/ yr</span>
+              </div>
+              <div style={{ marginTop:"8px" }}>
+                <div className="progress-bar">
+                  <div className="progress-fill" style={{ width:`${(catValue/totalValue)*100}%`, background:meta.color }} />
+                </div>
+                <div style={{ fontSize:"10px", color:"#64748B", marginTop:"4px" }}>
+                  {((catValue/totalValue)*100).toFixed(1)}% of total value
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Policy guidance */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:"10px", marginBottom:"18px" }}>
+        {["A","B","C"].map(cat => {
+          const meta = abcMeta[cat];
+          return (
+            <div key={cat} style={{ background:"#0F1117", border:`1px solid ${meta.color}22`, borderRadius:"10px", padding:"14px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"8px" }}>
+                <span style={{ width:"22px", height:"22px", borderRadius:"6px", background:meta.bg,
+                  color:meta.color, fontSize:"11px", fontWeight:"900", display:"flex", alignItems:"center", justifyContent:"center" }}>{cat}</span>
+                <span style={{ fontSize:"12px", fontWeight:"700", color:"#E2E8F0" }}>Recommended Policy</span>
+              </div>
+              <p style={{ fontSize:"11px", color:"#64748B", marginBottom:"6px", lineHeight:"1.5" }}>{meta.desc}</p>
+              <p style={{ fontSize:"11px", color:meta.color, fontWeight:"600", fontFamily:"monospace" }}>{meta.policy}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Filter + sort */}
+      <div style={{ display:"flex", gap:"8px", marginBottom:"12px", flexWrap:"wrap", alignItems:"center" }}>
+        <span style={{ fontSize:"12px", color:"#64748B", fontWeight:"600" }}>Filter:</span>
+        {["All","A","B","C"].map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            style={{ background: filter===f ? (f==="All"?"#1D4ED8":abcMeta[f]?.color||"#3B82F6") : "#1E2D4A",
+              border:"none", color: filter===f ? "#fff" : "#64748B",
+              padding:"5px 14px", borderRadius:"20px", cursor:"pointer", fontSize:"12px", fontWeight:"700" }}>
+            {f}
+          </button>
+        ))}
+        <div style={{ marginLeft:"auto", display:"flex", gap:"6px", alignItems:"center" }}>
+          <span style={{ fontSize:"12px", color:"#64748B" }}>Sort:</span>
+          <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+            style={{ background:"#1E2D4A", border:"1px solid #2D3F5C", color:"#94A3B8",
+              padding:"5px 10px", borderRadius:"6px", fontSize:"12px" }}>
+            <option value="annualValue">Annual Value ↓</option>
+            <option value="unitCost">Unit Cost ↓</option>
+            <option value="sku">SKU A→Z</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div style={{ background:"#161B2E", border:"1px solid #1E2D4A", borderRadius:"12px", overflowX:"auto" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"13px", minWidth:"640px" }}>
+          <thead>
+            <tr style={{ background:"#0F1117" }}>
+              {["Class","SKU","Description","Annual Usage","Unit Cost","Annual Value","Value %","Control Policy"].map(h => (
+                <th key={h} style={{ padding:"11px 14px", textAlign:"left", color:"#64748B", fontWeight:"700",
+                  fontSize:"10px", textTransform:"uppercase", letterSpacing:"0.5px",
+                  borderBottom:"1px solid #1E2D4A", whiteSpace:"nowrap" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((item, i) => {
+              const meta = abcMeta[item.category];
+              return (
+                <tr key={i} className="exception-row" style={{ borderBottom:"1px solid #1E2D4A", cursor:"default" }}>
+                  <td style={{ padding:"11px 14px" }}>
+                    <span className={`badge-${item.category.toLowerCase()}`}
+                      style={{ fontSize:"12px", fontWeight:"900", padding:"3px 10px", borderRadius:"6px", display:"inline-block" }}>
+                      {item.category}
+                    </span>
+                  </td>
+                  <td style={{ padding:"11px 14px", color:"#60A5FA", fontWeight:"700", fontFamily:"monospace" }}>{item.sku}</td>
+                  <td style={{ padding:"11px 14px", color:"#CBD5E1" }}>{item.name}</td>
+                  <td style={{ padding:"11px 14px", color:"#E2E8F0", textAlign:"right" }}>{fmt(item.annualUsage)}</td>
+                  <td style={{ padding:"11px 14px", color:"#E2E8F0", textAlign:"right" }}>₹{item.unitCost.toFixed(2)}</td>
+                  <td style={{ padding:"11px 14px", textAlign:"right", fontWeight:"700", color:meta.color }}>
+                    {fmtCurr(item.annualValue)}
+                  </td>
+                  <td style={{ padding:"11px 14px", textAlign:"right" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:"8px", justifyContent:"flex-end" }}>
+                      <div className="progress-bar" style={{ width:"50px" }}>
+                        <div className="progress-fill" style={{ width:`${Math.min(100,item.annualValuePct*5)}%`, background:meta.color }} />
+                      </div>
+                      <span style={{ color:"#94A3B8", fontSize:"11px", minWidth:"32px", textAlign:"right" }}>
+                        {item.annualValuePct.toFixed(1)}%
+                      </span>
+                    </div>
+                  </td>
+                  <td style={{ padding:"11px 14px" }}>
+                    <span style={{ fontSize:"10px", color:meta.color, fontWeight:"600" }}>
+                      {item.category==="A" ? "Tight / Weekly" : item.category==="B" ? "Moderate / Monthly" : "Loose / Quarterly"}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ─── MAIN APP ────────────────────────────────────────────── */
+function App() {
+  const [activeTab, setActiveTab]             = useState("dashboard");
+  const [selectedScenario, setSelectedScenario] = useState(0);
+  const [chatOpen, setChatOpen]               = useState(false);
+  const [chatMessages, setChatMessages]       = useState([
+    { role:"ai", text:"Hi! I'm your RapidResponse AI. Ask me about exceptions, forecasts, ABC classification, or SME scenarios." }
+  ]);
+  const [chatInput, setChatInput]   = useState("");
+  const [aiLoading, setAiLoading]   = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterSeverity, setFilterSeverity] = useState("All");
+  const chatEndRef = useRef(null);
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior:"smooth" }); }, [chatMessages]);
+
+  const sendChat = async () => {
+    if (!chatInput.trim() || aiLoading) return;
+    const userMsg = chatInput.trim();
+    setChatInput("");
+    setChatMessages(m => [...m, { role:"user", text:userMsg }]);
+    setAiLoading(true);
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({
+          model:"claude-sonnet-4-20250514",
+          max_tokens:1000,
+          system:`You are an AI assistant inside Kinaxis RapidResponse for a small/medium enterprise. Help planners with:
+- Exceptions: 47 open, PCB-4421 critical (gap -80 at Austin TX)
+- KPIs: OTD 94.2%, Fill Rate 98.1%, Inventory Turns 8.7x
+- ABC Classification: Class A items are PCB-4421, CHIP-X200, ASSM-7B (high value); Class B: MTR-DC12V, WIRE-AWG22; Class C: rest
+- SME Scenarios: Seasonal Demand Surge, Supplier Price Hike, Machinery Breakdown, New Market Entry
+Be concise and actionable. Max 2-3 sentences.`,
+          messages:[{ role:"user", content:userMsg }]
+        })
+      });
+      const data = await res.json();
+      const reply = data.content?.[0]?.text || "Sorry, could not process that.";
+      setChatMessages(m => [...m, { role:"ai", text:reply }]);
+    } catch {
+      setChatMessages(m => [...m, { role:"ai", text:"Connection error. Please try again." }]);
+    }
+    setAiLoading(false);
+  };
+
+  const filteredExceptions = mockData.exceptions.filter(e => {
+    const matchSearch = e.item.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      e.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      e.site.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchSeverity = filterSeverity === "All" || e.severity === filterSeverity;
+    return matchSearch && matchSeverity;
+  });
+
+  const tabs = [
+    { id:"dashboard",    label:"Dashboard",    icon:"⬛" },
+    { id:"workbench",    label:"Workbench",    icon:"📋" },
+    { id:"exceptions",   label:"Exceptions",   icon:"⚠️" },
+    { id:"scenarios",    label:"Scenarios",    icon:"🔀" },
+    { id:"sme-scenarios",label:"SME Planning", icon:"🏭" },
+    { id:"abc",          label:"ABC Class",    icon:"🗂️" },
+  ];
+
+  return (
+    <div style={{ fontFamily:"'Segoe UI',sans-serif", background:"#0F1117", minHeight:"100vh", color:"#E2E8F0", display:"flex", flexDirection:"column" }}>
+
+      {/* NAV */}
+      <nav style={{ background:"#161B2E", borderBottom:"1px solid #1E2D4A", padding:"0 14px",
+        display:"flex", alignItems:"center", height:"50px", gap:"10px", position:"sticky", top:0, zIndex:100 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+          <div style={{ width:"30px", height:"30px", background:"linear-gradient(135deg,#3B82F6,#1D4ED8)",
+            borderRadius:"8px", display:"flex", alignItems:"center", justifyContent:"center",
+            fontWeight:"900", fontSize:"16px", color:"#fff" }}>K</div>
+          <span style={{ fontWeight:"800", fontSize:"15px", color:"#F1F5F9" }}>RapidResponse</span>
+          <span style={{ background:"#1E3A5F", color:"#60A5FA", fontSize:"9px", padding:"2px 6px", borderRadius:"4px", fontWeight:"700" }}>MAESTRO</span>
+        </div>
+        <div style={{ marginLeft:"auto", display:"flex", gap:"8px", alignItems:"center" }}>
+          <span style={{ background:"#10B98122", color:"#10B981", padding:"3px 9px", borderRadius:"12px",
+            fontSize:"10px", border:"1px solid #10B98144", fontWeight:"700" }}>● LIVE</span>
+          <button onClick={() => setChatOpen(c => !c)}
+            style={{ background: chatOpen ? "#1D4ED8" : "#1E2D4A", border:"none", color:"#fff",
+              padding:"7px 14px", borderRadius:"6px", cursor:"pointer", fontSize:"12px", fontWeight:"700" }}>
+            🤖 AI Assistant
+          </button>
+          <div style={{ width:"32px", height:"32px", background:"#1E3A5F", borderRadius:"50%",
+            display:"flex", alignItems:"center", justifyContent:"center", fontSize:"12px", fontWeight:"700", color:"#60A5FA" }}>JP</div>
+        </div>
+      </nav>
+
+      {/* TAB BAR */}
+      <div style={{ background:"#161B2E", borderBottom:"1px solid #1E2D4A", display:"flex", overflowX:"auto", flexShrink:0 }}>
+        {tabs.map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            style={{ background:"none", border:"none",
+              borderBottom: activeTab===tab.id ? "2px solid #3B82F6" : "2px solid transparent",
+              color: activeTab===tab.id ? "#60A5FA" : "#64748B",
+              padding:"11px 20px", cursor:"pointer", fontSize:"13px",
+              fontWeight: activeTab===tab.id ? "700" : "500",
+              whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:"7px" }}>
+            {tab.icon} {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* MAIN */}
+      <div style={{ flex:1, overflow:"auto", padding:"18px" }}>
+
+        {/* DASHBOARD */}
+        {activeTab === "dashboard" && (
+          <div className="tab-content">
+            <div style={{ marginBottom:"16px" }}>
+              <h2 style={{ margin:0, fontSize:"18px", fontWeight:"800", color:"#F1F5F9" }}>Supply Chain Overview</h2>
+              <p style={{ margin:"4px 0 0", fontSize:"11px", color:"#475569" }}>Mar 8, 2026 · 09:42 AM EST</p>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:"10px", marginBottom:"16px" }}>
+              {mockData.kpis.map((kpi, i) => (
+                <div key={i} style={{ background:"#161B2E", border:"1px solid #1E2D4A", borderRadius:"10px", padding:"14px", position:"relative", overflow:"hidden" }}>
+                  <div style={{ position:"absolute", top:0, left:0, right:0, height:"3px", background: kpi.status==="good" ? "#10B981" : "#F59E0B" }} />
+                  <div style={{ fontSize:"10px", color:"#64748B", fontWeight:"700", textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:"6px" }}>{kpi.label}</div>
+                  <div style={{ fontSize:"24px", fontWeight:"900", color:"#F1F5F9", lineHeight:1 }}>{kpi.value}</div>
+                  <div style={{ fontSize:"11px", color: kpi.status==="good" ? "#10B981" : "#F59E0B", marginTop:"4px", fontWeight:"600" }}>{kpi.trend} vs last period</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:"14px" }}>
+              <div style={{ background:"#161B2E", border:"1px solid #1E2D4A", borderRadius:"10px", padding:"16px" }}>
+                <h3 style={{ margin:"0 0 10px", fontSize:"13px", fontWeight:"700", color:"#E2E8F0" }}>Demand vs Supply vs Inventory</h3>
+                <div style={{ display:"flex", gap:"14px", fontSize:"10px", color:"#64748B", marginBottom:"10px" }}>
+                  <span><span style={{ color:"#3B82F6" }}>■</span> Demand</span>
+                  <span><span style={{ color:"#10B981" }}>■</span> Supply</span>
+                  <span><span style={{ color:"#F59E0B" }}>■</span> Inventory</span>
+                </div>
+                <BarChart data={mockData.demandSupply} />
+              </div>
+              <div style={{ background:"#161B2E", border:"1px solid #1E2D4A", borderRadius:"10px", padding:"16px" }}>
+                <h3 style={{ margin:"0 0 12px", fontSize:"13px", fontWeight:"700", color:"#E2E8F0" }}>Recent Exceptions</h3>
+                <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+                  {mockData.exceptions.slice(0, 4).map((ex, i) => (
+                    <div key={i} style={{ padding:"10px", background:"#0F1117", borderRadius:"8px", border:"1px solid #1E2D4A",
+                      display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                      <div>
+                        <div style={{ fontSize:"12px", fontWeight:"700", color:"#E2E8F0" }}>{ex.type}</div>
+                        <div style={{ fontSize:"11px", color:"#64748B", marginTop:"2px" }}>{ex.item} · {ex.site}</div>
+                      </div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:"4px", alignItems:"flex-end" }}>
+                        <span style={{ fontSize:"10px", padding:"2px 6px", borderRadius:"4px",
+                          background:`${severityColor[ex.severity]}22`, color:severityColor[ex.severity], fontWeight:"700" }}>{ex.severity}</span>
+                        <span style={{ fontSize:"10px", padding:"2px 6px", borderRadius:"4px",
+                          background:`${exStatusColor[ex.status]}22`, color:exStatusColor[ex.status], fontWeight:"700" }}>{ex.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => setActiveTab("exceptions")}
+                  style={{ marginTop:"10px", background:"none", border:"1px solid #1E2D4A", color:"#60A5FA",
+                    padding:"8px", borderRadius:"6px", cursor:"pointer", fontSize:"12px", width:"100%", fontWeight:"600" }}>
+                  View All 47 Exceptions →
+                </button>
+              </div>
+
+              {/* ABC quick preview */}
+              <div style={{ background:"#161B2E", border:"1px solid #1E2D4A", borderRadius:"10px", padding:"16px" }}>
+                <h3 style={{ margin:"0 0 12px", fontSize:"13px", fontWeight:"700", color:"#E2E8F0" }}>ABC Inventory Snapshot</h3>
+                {[
+                  { cat:"A", label:"High Value", items:3, value:"₹8.24L", color:"#EF4444", pct:80 },
+                  { cat:"B", label:"Medium Value",items:3, value:"₹1.74L", color:"#F59E0B", pct:15 },
+                  { cat:"C", label:"Low Value",   items:6, value:"₹0.54L", color:"#10B981", pct:5  },
+                ].map(row => (
+                  <div key={row.cat} style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"10px" }}>
+                    <span style={{ width:"24px", height:"24px", borderRadius:"6px", fontSize:"12px", fontWeight:"900",
+                      background:`${row.color}20`, color:row.color, display:"flex", alignItems:"center", justifyContent:"center" }}>{row.cat}</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", fontSize:"11px", marginBottom:"4px" }}>
+                        <span style={{ color:"#94A3B8" }}>{row.label} ({row.items} SKUs)</span>
+                        <span style={{ color:row.color, fontWeight:"700" }}>{row.value}/yr</span>
+                      </div>
+                      <div className="progress-bar">
+                        <div className="progress-fill" style={{ width:`${row.pct}%`, background:row.color }} />
+                      </div>
+                    </div>
+                    <span style={{ fontSize:"11px", color:"#64748B", width:"28px", textAlign:"right" }}>{row.pct}%</span>
+                  </div>
+                ))}
+                <button onClick={() => setActiveTab("abc")}
+                  style={{ marginTop:"4px", background:"none", border:"1px solid #1E2D4A", color:"#60A5FA",
+                    padding:"8px", borderRadius:"6px", cursor:"pointer", fontSize:"12px", width:"100%", fontWeight:"600" }}>
+                  View Full ABC Analysis →
+                </button>
+              </div>
+
+              {/* SME scenarios quick preview */}
+              <div style={{ background:"#161B2E", border:"1px solid #1E2D4A", borderRadius:"10px", padding:"16px" }}>
+                <h3 style={{ margin:"0 0 12px", fontSize:"13px", fontWeight:"700", color:"#E2E8F0" }}>SME Scenario Quick-Start</h3>
+                <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+                  {mockData.smeScenarios.map(s => (
+                    <div key={s.id} style={{ display:"flex", alignItems:"center", gap:"10px", padding:"8px 10px",
+                      background:"#0F1117", borderRadius:"8px", border:"1px solid #1E2D4A" }}>
+                      <span style={{ fontSize:"16px" }}>{s.icon}</span>
+                      <span style={{ fontSize:"12px", color:"#CBD5E1", fontWeight:"600", flex:1 }}>{s.name}</span>
+                      <span style={{ fontSize:"9px", fontWeight:"700", padding:"2px 6px", borderRadius:"4px",
+                        background:"#1E3A5F", color:"#60A5FA" }}>{s.tag}</span>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => setActiveTab("sme-scenarios")}
+                  style={{ marginTop:"10px", background:"none", border:"1px solid #1E2D4A", color:"#60A5FA",
+                    padding:"8px", borderRadius:"6px", cursor:"pointer", fontSize:"12px", width:"100%", fontWeight:"600" }}>
+                  Open SME Planner →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* WORKBENCH */}
+        {activeTab === "workbench" && (
+          <div className="tab-content">
+            <h2 style={{ margin:"0 0 16px", fontSize:"18px", fontWeight:"800", color:"#F1F5F9" }}>Planning Workbench</h2>
+            <div style={{ background:"#161B2E", border:"1px solid #1E2D4A", borderRadius:"10px", overflowX:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"13px", minWidth:"600px" }}>
+                <thead>
+                  <tr style={{ background:"#0F1117" }}>
+                    {["Part #","Description","Site","On Hand","On Order","Demand","Gap","Status"].map(h => (
+                      <th key={h} style={{ padding:"11px 14px", textAlign:"left", color:"#64748B", fontWeight:"700",
+                        fontSize:"10px", textTransform:"uppercase", letterSpacing:"0.5px",
+                        borderBottom:"1px solid #1E2D4A", whiteSpace:"nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {mockData.workbench.map((row, i) => (
+                    <tr key={i} style={{ borderBottom:"1px solid #1E2D4A" }}
+                      onMouseEnter={e => e.currentTarget.style.background="#1E2D4A"}
+                      onMouseLeave={e => e.currentTarget.style.background="transparent"}>
+                      <td style={{ padding:"11px 14px", color:"#60A5FA", fontWeight:"700", fontFamily:"monospace" }}>{row.part}</td>
+                      <td style={{ padding:"11px 14px", color:"#CBD5E1" }}>{row.description}</td>
+                      <td style={{ padding:"11px 14px", color:"#94A3B8" }}>{row.site}</td>
+                      <td style={{ padding:"11px 14px", color:"#E2E8F0", textAlign:"right" }}>{row.onHand.toLocaleString()}</td>
+                      <td style={{ padding:"11px 14px", color:"#E2E8F0", textAlign:"right" }}>{row.onOrder.toLocaleString()}</td>
+                      <td style={{ padding:"11px 14px", color:"#E2E8F0", textAlign:"right" }}>{row.demand.toLocaleString()}</td>
+                      <td style={{ padding:"11px 14px", textAlign:"right", fontWeight:"800",
+                        color: row.gap<0?"#EF4444":row.gap>1000?"#8B5CF6":"#10B981" }}>
+                        {row.gap>0?"+":""}{row.gap.toLocaleString()}
+                      </td>
+                      <td style={{ padding:"11px 14px" }}>
+                        <span style={{ fontSize:"11px", padding:"3px 8px", borderRadius:"4px",
+                          background:`${statusColor[row.status]}22`, color:statusColor[row.status], fontWeight:"700" }}>{row.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* EXCEPTIONS */}
+        {activeTab === "exceptions" && (
+          <div className="tab-content">
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"14px", flexWrap:"wrap", gap:"10px" }}>
+              <h2 style={{ margin:0, fontSize:"18px", fontWeight:"800", color:"#F1F5F9" }}>
+                Exceptions Manager <span style={{ fontSize:"13px", color:"#64748B", fontWeight:"500" }}>({filteredExceptions.length} shown)</span>
+              </h2>
+              <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
+                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search exceptions..."
+                  style={{ background:"#1E2D4A", border:"1px solid #2D3F5C", color:"#E2E8F0",
+                    padding:"7px 12px", borderRadius:"6px", fontSize:"12px", outline:"none", width:"180px" }} />
+                <select value={filterSeverity} onChange={e => setFilterSeverity(e.target.value)}
+                  style={{ background:"#1E2D4A", border:"1px solid #2D3F5C", color:"#94A3B8",
+                    padding:"7px 10px", borderRadius:"6px", fontSize:"12px" }}>
+                  <option>All</option><option>High</option><option>Medium</option><option>Low</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+              {filteredExceptions.map((ex, i) => (
+                <div key={i} style={{ background:"#161B2E", border:`1px solid ${ex.severity==="High"?"#EF444433":"#1E2D4A"}`,
+                  borderRadius:"10px", padding:"14px 16px", display:"flex", gap:"14px", alignItems:"flex-start" }}>
+                  <div style={{ width:"4px", minHeight:"50px", borderRadius:"4px", background:severityColor[ex.severity], flexShrink:0 }} />
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:"10px" }}>
+                      <div>
+                        <div style={{ fontSize:"14px", fontWeight:"700", color:"#E2E8F0" }}>{ex.type}</div>
+                        <div style={{ fontSize:"11px", color:"#64748B", marginTop:"3px" }}>{ex.id} · {ex.item} · {ex.site} · {ex.date}</div>
+                      </div>
+                      <div style={{ display:"flex", gap:"6px", alignItems:"center", flexShrink:0 }}>
+                        <span style={{ fontSize:"10px", padding:"2px 7px", borderRadius:"4px",
+                          background:`${severityColor[ex.severity]}22`, color:severityColor[ex.severity], fontWeight:"700" }}>{ex.severity}</span>
+                        <span style={{ fontSize:"10px", padding:"2px 7px", borderRadius:"4px",
+                          background:`${exStatusColor[ex.status]}22`, color:exStatusColor[ex.status], fontWeight:"700" }}>{ex.status}</span>
+                      </div>
+                    </div>
+                    {ex.status !== "Resolved" && (
+                      <button style={{ marginTop:"8px", background:"#1E2D4A", border:"1px solid #2D3F5C",
+                        color:"#94A3B8", padding:"4px 14px", borderRadius:"4px", fontSize:"11px", cursor:"pointer", fontWeight:"600" }}>
+                        Mark Resolved
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ORIGINAL SCENARIOS */}
+        {activeTab === "scenarios" && (
+          <div className="tab-content">
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"16px" }}>
+              <h2 style={{ margin:0, fontSize:"18px", fontWeight:"800", color:"#F1F5F9" }}>What-If Scenarios</h2>
+              <button style={{ background:"#1D4ED8", border:"none", color:"#fff", padding:"8px 18px",
+                borderRadius:"6px", fontSize:"13px", cursor:"pointer", fontWeight:"700" }}>+ New Scenario</button>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:"12px", marginBottom:"18px" }}>
+              {mockData.scenarios.map((s, i) => (
+                <div key={i} onClick={() => setSelectedScenario(i)}
+                  style={{ background:"#161B2E", border:`2px solid ${selectedScenario===i?"#3B82F6":"#1E2D4A"}`,
+                    borderRadius:"10px", padding:"16px", cursor:"pointer" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                    <div>
+                      <div style={{ fontSize:"14px", fontWeight:"800", color:"#E2E8F0" }}>{s.name}</div>
+                      <div style={{ fontSize:"11px", color:"#64748B", marginTop:"2px" }}>Created: {s.date}</div>
+                    </div>
+                    <span style={{ fontSize:"10px", padding:"3px 8px", borderRadius:"4px", fontWeight:"700",
+                      background: s.status==="Active"?"#10B98122":s.status==="Approved"?"#3B82F622":"#1E2D4A",
+                      color: s.status==="Active"?"#10B981":s.status==="Approved"?"#60A5FA":"#94A3B8" }}>{s.status}</span>
+                  </div>
+                  {s.delta !== "—"
+                    ? <div style={{ marginTop:"10px", fontSize:"24px", fontWeight:"900", color: s.delta.startsWith("+")?"#10B981":"#EF4444" }}>{s.delta}</div>
+                    : <div style={{ marginTop:"10px", fontSize:"12px", color:"#64748B" }}>Reference plan · No delta</div>
+                  }
+                </div>
+              ))}
+            </div>
+            <div style={{ background:"#161B2E", border:"1px solid #1E2D4A", borderRadius:"10px", padding:"18px" }}>
+              <h3 style={{ margin:"0 0 14px", fontSize:"14px", fontWeight:"700", color:"#E2E8F0" }}>Comparison: {mockData.scenarios[selectedScenario].name}</h3>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:"10px" }}>
+                {[
+                  ["Fulfillment Rate","94.2%", selectedScenario===1?"89.1%":selectedScenario===2?"81.4%":selectedScenario===3?"96.3%":"94.2%"],
+                  ["Revenue Impact","$0", mockData.scenarios[selectedScenario].delta==="—"?"Baseline":mockData.scenarios[selectedScenario].delta],
+                  ["Total Demand","14,200 units", selectedScenario===1?"16,330 units":"14,200 units"],
+                ].map(([label, base, scenario], i) => (
+                  <div key={i} style={{ background:"#0F1117", borderRadius:"8px", padding:"14px" }}>
+                    <div style={{ fontSize:"10px", color:"#64748B", fontWeight:"700", textTransform:"uppercase", marginBottom:"10px" }}>{label}</div>
+                    <div style={{ display:"flex", gap:"20px" }}>
+                      <div>
+                        <div style={{ fontSize:"9px", color:"#475569" }}>Baseline</div>
+                        <div style={{ fontSize:"15px", fontWeight:"700", color:"#94A3B8" }}>{base}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize:"9px", color:"#475569" }}>Scenario</div>
+                        <div style={{ fontSize:"15px", fontWeight:"700", color:"#60A5FA" }}>{scenario}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SME SCENARIO TAB */}
+        {activeTab === "sme-scenarios" && <SMEScenarioTab />}
+
+        {/* ABC TAB */}
+        {activeTab === "abc" && <ABCTab />}
+
+      </div>
+
+      {/* AI CHAT */}
+      {chatOpen && (
+        <div style={{ position:"fixed", bottom:0, right:0, width:"340px", height:"480px", background:"#161B2E",
+          borderTop:"1px solid #1E2D4A", borderLeft:"1px solid #1E2D4A", borderRadius:"12px 0 0 0",
+          display:"flex", flexDirection:"column", zIndex:200, boxShadow:"0 -4px 30px #0008" }}>
+          <div style={{ padding:"12px 16px", borderBottom:"1px solid #1E2D4A", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div>
+              <div style={{ fontSize:"14px", fontWeight:"800", color:"#E2E8F0" }}>🤖 AI Assistant</div>
+              <div style={{ fontSize:"10px", color:"#10B981" }}>● Connected to live data</div>
+            </div>
+            <button onClick={() => setChatOpen(false)} style={{ background:"#1E2D4A", border:"none", color:"#94A3B8",
+              cursor:"pointer", fontSize:"18px", width:"30px", height:"30px", borderRadius:"6px" }}>×</button>
+          </div>
+          <div style={{ flex:1, overflow:"auto", padding:"12px", display:"flex", flexDirection:"column", gap:"10px" }}>
+            {chatMessages.map((msg, i) => (
+              <div key={i} style={{ display:"flex", justifyContent: msg.role==="user"?"flex-end":"flex-start" }}>
+                <div style={{ maxWidth:"85%", padding:"10px 13px",
+                  borderRadius: msg.role==="user"?"14px 14px 2px 14px":"14px 14px 14px 2px",
+                  background: msg.role==="user"?"#1D4ED8":"#1E2D4A",
+                  fontSize:"12px", color:"#E2E8F0", lineHeight:"1.6" }}>
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+            {aiLoading && (
+              <div style={{ display:"flex" }}>
+                <div style={{ padding:"10px 13px", borderRadius:"14px 14px 14px 2px",
+                  background:"#1E2D4A", fontSize:"12px", color:"#64748B" }}>Analyzing data...</div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+          <div style={{ padding:"12px", borderTop:"1px solid #1E2D4A" }}>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:"5px", marginBottom:"8px" }}>
+              {["Show critical items","ABC Class A policy","Best SME scenario?"].map(q => (
+                <button key={q} onClick={() => setChatInput(q)}
+                  style={{ background:"#0F1117", border:"1px solid #1E2D4A", color:"#60A5FA",
+                    padding:"4px 10px", borderRadius:"20px", fontSize:"10px", cursor:"pointer", fontWeight:"600" }}>{q}</button>
+              ))}
+            </div>
+            <div style={{ display:"flex", gap:"8px" }}>
+              <input value={chatInput} onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => e.key==="Enter" && sendChat()}
+                placeholder="Ask about your supply chain..."
+                style={{ flex:1, background:"#0F1117", border:"1px solid #1E2D4A", color:"#E2E8F0",
+                  padding:"9px 12px", borderRadius:"8px", fontSize:"12px", outline:"none" }} />
+              <button onClick={sendChat} disabled={aiLoading}
+                style={{ background:"#1D4ED8", border:"none", color:"#fff", padding:"9px 14px",
+                  borderRadius:"8px", cursor:"pointer", fontSize:"15px", opacity: aiLoading?0.5:1 }}>→</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
